@@ -1,4 +1,5 @@
 import { access } from "node:fs/promises";
+import path from "node:path";
 import {
   CaatingaError,
   CaatingaErrorCode,
@@ -52,12 +53,36 @@ export async function configDiagnostic(): Promise<Diagnostic | undefined> {
   }
 }
 
-export async function artifactsDiagnostic(): Promise<Diagnostic> {
+export async function artifactsDiagnostic(cwd = process.cwd()): Promise<Diagnostic> {
   try {
-    await access("caatinga.artifacts.json");
-    await readArtifacts();
+    await access(path.resolve(cwd, "caatinga.artifacts.json"));
+    await readArtifacts(cwd);
     return { ok: true, label: "caatinga.artifacts.json found" };
   } catch {
+    let projectName: string | undefined;
+    try {
+      const config = await loadConfig({ cwd });
+      projectName = config.project;
+    } catch {
+      for (const configFile of ["caatinga.config.ts", "caatinga.config.js"]) {
+        try {
+          await access(path.resolve(cwd, configFile));
+          projectName = "<project-name>";
+          break;
+        } catch {
+          // not found
+        }
+      }
+    }
+
+    if (projectName) {
+      return {
+        ok: false,
+        label: "caatinga.artifacts.json not found or invalid",
+        fix: `Create caatinga.artifacts.json in this directory (e.g. { "project": "${projectName}", "version": 2, "networks": {} }), or run deploy to generate it.`,
+      };
+    }
+
     return {
       ok: false,
       label: "caatinga.artifacts.json not found or invalid",

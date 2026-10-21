@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CaatingaError, CaatingaErrorCode, type CaatingaConfig } from "@caatinga/core";
-import { configDiagnostic, networkDiagnostic } from "./project-diagnostic.js";
+import { configDiagnostic, networkDiagnostic, artifactsDiagnostic } from "./project-diagnostic.js";
 
 const loadConfigMock = vi.hoisted(() => vi.fn());
+
+const readArtifactsMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@caatinga/core", async () => {
   const actual = await vi.importActual<typeof import("@caatinga/core")>("@caatinga/core");
   return {
     ...actual,
     loadConfig: loadConfigMock,
+    readArtifacts: readArtifactsMock,
   };
 });
 
@@ -80,5 +83,35 @@ describe("networkDiagnostic", () => {
       ok: true,
       label: "network testnet found",
     });
+  });
+});
+
+describe("artifactsDiagnostic", () => {
+  beforeEach(() => {
+    loadConfigMock.mockReset();
+    readArtifactsMock.mockReset();
+  });
+
+  it("suggests creating artifacts in place when config is present", async () => {
+    readArtifactsMock.mockRejectedValue(new Error("ENOENT"));
+    loadConfigMock.mockResolvedValue({ ...config, project: "my-existing-dapp" });
+
+    const result = await artifactsDiagnostic();
+    expect(result.ok).toBe(false);
+    expect(result.fix).toContain("Create caatinga.artifacts.json in this directory");
+    expect(result.fix).toContain("my-existing-dapp");
+    expect(result.fix).not.toContain("init");
+  });
+
+  it("suggests ctg init when config is also missing", async () => {
+    readArtifactsMock.mockRejectedValue(new Error("ENOENT"));
+    loadConfigMock.mockRejectedValue(
+      new CaatingaError("Config missing", CaatingaErrorCode.CONFIG_NOT_FOUND)
+    );
+
+    const result = await artifactsDiagnostic();
+    expect(result.ok).toBe(false);
+    expect(result.fix).toMatch(/init/i);
+    expect(result.fix).not.toContain("Create caatinga.artifacts.json in this directory");
   });
 });
