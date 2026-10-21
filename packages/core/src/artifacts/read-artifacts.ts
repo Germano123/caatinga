@@ -29,10 +29,26 @@ export async function readArtifacts(cwd = process.cwd()): Promise<CaatingaArtifa
     return CaatingaArtifactsSchema.parse(parsedJson);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      let projectName: string | undefined;
+      for (const configFile of ["caatinga.config.ts", "caatinga.config.js"]) {
+        try {
+          const configContent = await readFile(path.resolve(cwd, configFile), "utf8");
+          const match = configContent.match(/project\s*:\s*["'`]([^"'`]+)["'`]/);
+          projectName = match ? match[1] : "<project-name>";
+          break;
+        } catch {
+          // not found
+        }
+      }
+
+      const hint = projectName
+        ? `Create caatinga.artifacts.json in this directory (e.g. { "project": "${projectName}", "version": 2, "networks": {} }), or run deploy to generate it.`
+        : "Run ctg init, or create the artifacts file before deploying or generating bindings.";
+
       throw new CaatingaError(
         "caatinga.artifacts.json was not found.",
         CaatingaErrorCode.ARTIFACT_NOT_FOUND,
-        "Run ctg init, or create the artifacts file before deploying or generating bindings."
+        hint
       );
     }
 

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CaatingaErrorCode } from "../errors/CaatingaError.js";
+import { CaatingaError, CaatingaErrorCode } from "../errors/CaatingaError.js";
 import { CaatingaArtifactsSchema } from "./artifact.schema.js";
 import { readArtifacts } from "./read-artifacts.js";
 import { createInitialArtifacts, writeArtifacts } from "./write-artifacts.js";
@@ -55,7 +55,28 @@ describe("writeArtifacts and readArtifacts", () => {
     tmpDir = await mkdtemp(path.join(os.tmpdir(), "caatinga-art-"));
     await expect(readArtifacts(tmpDir)).rejects.toMatchObject({
       code: CaatingaErrorCode.ARTIFACT_NOT_FOUND,
+      hint: expect.stringContaining("Run ctg init"),
     });
+  });
+
+  it("suggests_creating_artifacts_in_place_when_config_is_present", async () => {
+    tmpDir = await mkdtemp(path.join(os.tmpdir(), "caatinga-art-"));
+    await writeFile(
+      path.join(tmpDir, "caatinga.config.ts"),
+      'export default { project: "existing-dapp", networks: {} };',
+      "utf8"
+    );
+
+    try {
+      await readArtifacts(tmpDir);
+      expect.unreachable("Expected readArtifacts to throw");
+    } catch (err: unknown) {
+      expect(err).toBeInstanceOf(CaatingaError);
+      const error = err as CaatingaError;
+      expect(error.code).toBe(CaatingaErrorCode.ARTIFACT_NOT_FOUND);
+      expect(error.hint).not.toContain("Run ctg init");
+      expect(error.hint).toContain("existing-dapp");
+    }
   });
 
   it("should_throw_CAATINGA_ARTIFACT_INVALID_when_json_malformed", async () => {
